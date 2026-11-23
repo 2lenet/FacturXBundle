@@ -1,0 +1,147 @@
+{#
+    Factur-X invoice XML, EN 16931 profile (UN/CEFACT CII D16B).
+    The keys of `invoice` are described in README.md. The element order is the one of the CII schema: do not reorder.
+    An optional element is written only when its value is set.
+#}{% import _self as fx -%}
+<?xml version="1.0" encoding="UTF-8"?>
+<rsm:CrossIndustryInvoice xmlns:rsm="urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100"
+                          xmlns:qdt="urn:un:unece:uncefact:data:standard:QualifiedDataType:100"
+                          xmlns:ram="urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100"
+                          xmlns:udt="urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100">
+    <rsm:ExchangedDocumentContext>
+{% if invoice.business_process|default %}
+        <ram:BusinessProcessSpecifiedDocumentContextParameter>
+            <ram:ID>{{ invoice.business_process }}</ram:ID>
+        </ram:BusinessProcessSpecifiedDocumentContextParameter>
+{% endif %}
+        <ram:GuidelineSpecifiedDocumentContextParameter>
+            <ram:ID>{{ invoice.profile|default('urn:cen.eu:en16931:2017') }}</ram:ID>
+        </ram:GuidelineSpecifiedDocumentContextParameter>
+    </rsm:ExchangedDocumentContext>
+    <rsm:ExchangedDocument>
+        <ram:ID>{{ invoice.number }}</ram:ID>
+        <ram:TypeCode>{{ invoice.type_code|default('380') }}</ram:TypeCode>
+        <ram:IssueDateTime>
+            <udt:DateTimeString format="102">{{ invoice.issue_date|date('Ymd') }}</udt:DateTimeString>
+        </ram:IssueDateTime>
+{% for note in invoice.notes|default([]) %}
+        <ram:IncludedNote>
+            <ram:Content>{{ note.content }}</ram:Content>
+{% if note.subject_code|default %}
+            <ram:SubjectCode>{{ note.subject_code }}</ram:SubjectCode>
+{% endif %}
+        </ram:IncludedNote>
+{% endfor %}
+    </rsm:ExchangedDocument>
+    <rsm:SupplyChainTradeTransaction>
+{% for line in invoice.lines %}
+        <ram:IncludedSupplyChainTradeLineItem>
+            <ram:AssociatedDocumentLineDocument>
+                <ram:LineID>{{ loop.index }}</ram:LineID>
+            </ram:AssociatedDocumentLineDocument>
+            <ram:SpecifiedTradeProduct>
+                <ram:Name>{{ line.label }}</ram:Name>
+            </ram:SpecifiedTradeProduct>
+            <ram:SpecifiedLineTradeAgreement>
+                <ram:NetPriceProductTradePrice>
+                    <ram:ChargeAmount>{{ fx.amount(line.unit_price_excl_tax) }}</ram:ChargeAmount>
+                </ram:NetPriceProductTradePrice>
+            </ram:SpecifiedLineTradeAgreement>
+            <ram:SpecifiedLineTradeDelivery>
+                <ram:BilledQuantity unitCode="{{ line.unit_code|default('C62') }}">{{ line.quantity }}</ram:BilledQuantity>
+            </ram:SpecifiedLineTradeDelivery>
+            <ram:SpecifiedLineTradeSettlement>
+                <ram:ApplicableTradeTax>
+                    <ram:TypeCode>VAT</ram:TypeCode>
+                    <ram:CategoryCode>{{ line.vat_category }}</ram:CategoryCode>
+                    <ram:RateApplicablePercent>{{ fx.amount(line.vat_rate) }}</ram:RateApplicablePercent>
+                </ram:ApplicableTradeTax>
+                <ram:SpecifiedTradeSettlementLineMonetarySummation>
+                    <ram:LineTotalAmount>{{ fx.amount(line.total_excl_tax) }}</ram:LineTotalAmount>
+                </ram:SpecifiedTradeSettlementLineMonetarySummation>
+            </ram:SpecifiedLineTradeSettlement>
+        </ram:IncludedSupplyChainTradeLineItem>
+{% endfor %}
+        <ram:ApplicableHeaderTradeAgreement>
+{% if invoice.buyer_reference|default %}
+            <ram:BuyerReference>{{ invoice.buyer_reference }}</ram:BuyerReference>
+{% endif %}
+            <ram:SellerTradeParty>
+{{ fx.party(invoice.seller) }}            </ram:SellerTradeParty>
+            <ram:BuyerTradeParty>
+{{ fx.party(invoice.buyer) }}            </ram:BuyerTradeParty>
+        </ram:ApplicableHeaderTradeAgreement>
+        <ram:ApplicableHeaderTradeDelivery>
+            <ram:ActualDeliverySupplyChainEvent>
+                <ram:OccurrenceDateTime>
+                    <udt:DateTimeString format="102">{{ invoice.delivery_date|default(invoice.issue_date)|date('Ymd') }}</udt:DateTimeString>
+                </ram:OccurrenceDateTime>
+            </ram:ActualDeliverySupplyChainEvent>
+        </ram:ApplicableHeaderTradeDelivery>
+        <ram:ApplicableHeaderTradeSettlement>
+            <ram:InvoiceCurrencyCode>{{ invoice.currency|default('EUR') }}</ram:InvoiceCurrencyCode>
+{% for tax in invoice.taxes %}
+            <ram:ApplicableTradeTax>
+                <ram:CalculatedAmount>{{ fx.amount(tax.tax_amount) }}</ram:CalculatedAmount>
+                <ram:TypeCode>VAT</ram:TypeCode>
+{% if tax.exemption_reason|default %}
+                <ram:ExemptionReason>{{ tax.exemption_reason }}</ram:ExemptionReason>
+{% endif %}
+                <ram:BasisAmount>{{ fx.amount(tax.basis_amount) }}</ram:BasisAmount>
+                <ram:CategoryCode>{{ tax.vat_category }}</ram:CategoryCode>
+                <ram:RateApplicablePercent>{{ fx.amount(tax.vat_rate) }}</ram:RateApplicablePercent>
+            </ram:ApplicableTradeTax>
+{% endfor %}
+{% if invoice.due_date|default %}
+            <ram:SpecifiedTradePaymentTerms>
+                <ram:DueDateDateTime>
+                    <udt:DateTimeString format="102">{{ invoice.due_date|date('Ymd') }}</udt:DateTimeString>
+                </ram:DueDateDateTime>
+            </ram:SpecifiedTradePaymentTerms>
+{% endif %}
+            <ram:SpecifiedTradeSettlementHeaderMonetarySummation>
+                <ram:LineTotalAmount>{{ fx.amount(invoice.totals.total_excl_tax) }}</ram:LineTotalAmount>
+                <ram:TaxBasisTotalAmount>{{ fx.amount(invoice.totals.tax_basis_total|default(invoice.totals.total_excl_tax)) }}</ram:TaxBasisTotalAmount>
+                <ram:TaxTotalAmount currencyID="{{ invoice.currency|default('EUR') }}">{{ fx.amount(invoice.totals.total_tax) }}</ram:TaxTotalAmount>
+                <ram:GrandTotalAmount>{{ fx.amount(invoice.totals.total_incl_tax) }}</ram:GrandTotalAmount>
+                <ram:DuePayableAmount>{{ fx.amount(invoice.totals.due_amount|default(invoice.totals.total_incl_tax)) }}</ram:DuePayableAmount>
+            </ram:SpecifiedTradeSettlementHeaderMonetarySummation>
+        </ram:ApplicableHeaderTradeSettlement>
+    </rsm:SupplyChainTradeTransaction>
+</rsm:CrossIndustryInvoice>
+{#- macros (after the document: nothing may be written before the XML declaration) #}
+{% macro amount(value) %}{{ value|number_format(2, '.', '') }}{% endmacro %}
+
+{% macro party(party) %}
+                <ram:Name>{{ party.name }}</ram:Name>
+{% if party.siren|default %}
+                <ram:SpecifiedLegalOrganization>
+                    <ram:ID schemeID="0002">{{ party.siren }}</ram:ID>
+                </ram:SpecifiedLegalOrganization>
+{% endif %}
+                <ram:PostalTradeAddress>
+{% if party.address.postcode|default %}
+                    <ram:PostcodeCode>{{ party.address.postcode }}</ram:PostcodeCode>
+{% endif %}
+{% if party.address.line1|default %}
+                    <ram:LineOne>{{ party.address.line1 }}</ram:LineOne>
+{% endif %}
+{% if party.address.line2|default %}
+                    <ram:LineTwo>{{ party.address.line2 }}</ram:LineTwo>
+{% endif %}
+{% if party.address.city|default %}
+                    <ram:CityName>{{ party.address.city }}</ram:CityName>
+{% endif %}
+                    <ram:CountryID>{{ party.address.country_code|default('FR') }}</ram:CountryID>
+                </ram:PostalTradeAddress>
+{% if party.electronic_address|default %}
+                <ram:URIUniversalCommunication>
+                    <ram:URIID schemeID="{{ party.electronic_address_scheme|default('0225') }}">{{ party.electronic_address }}</ram:URIID>
+                </ram:URIUniversalCommunication>
+{% endif %}
+{% if party.vat_number|default %}
+                <ram:SpecifiedTaxRegistration>
+                    <ram:ID schemeID="VA">{{ party.vat_number }}</ram:ID>
+                </ram:SpecifiedTaxRegistration>
+{% endif %}
+{% endmacro %}

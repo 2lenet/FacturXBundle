@@ -1,0 +1,23 @@
+# Loaded by LleFacturXExtension when lle_facturx.platform is set.
+services:
+    _defaults:
+        autowire: true
+        autoconfigure: true
+        public: false
+
+    # credentials from the environment only: they can be written neither in a yaml file nor in the config screen
+    Lle\FacturXBundle\Platform\Iopole\IopolePlatform:
+        arguments:
+            $authUrl: '%env(FACTURX_PLATFORM_AUTH_URL)%'
+            $apiUrl: '%env(FACTURX_PLATFORM_API_URL)%'
+            $clientId: '%env(FACTURX_PLATFORM_CLIENT_ID)%'
+            $clientSecret: '%env(FACTURX_PLATFORM_CLIENT_SECRET)%'
+            $customerId: '%env(FACTURX_PLATFORM_ACCOUNT_ID)%'
+
+    Lle\FacturXBundle\Command\SendCommand: ~
+
+    # finds the entities implementing ElectronicInvoiceInterface in the Doctrine mapping
+    Lle\FacturXBundle\Command\RefreshStatusesCommand: ~
+
+    # needs a service of the project implementing InvoicePdfProviderInterface (aliased by PdfProviderPass)
+    Lle\FacturXBundle\Invoice\InvoiceSender: ~
