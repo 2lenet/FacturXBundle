@@ -3,6 +3,7 @@
 namespace Lle\FacturXBundle\Command;
 
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\Persistence\ManagerRegistry;
 use Lle\FacturXBundle\Invoice\ElectronicInvoiceInterface;
 use Lle\FacturXBundle\Invoice\InvoiceSender;
@@ -12,8 +13,8 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
-use Symfony\Contracts\HttpClient\Exception\ExceptionInterface as HttpClientException;
 
 /** For a cron: the platform changes the status of the invoices after their sending. */
 #[AsCommand(
@@ -28,6 +29,7 @@ class RefreshStatusesCommand extends Command
     public function __construct(
         protected InvoiceSender $sender,
         protected ManagerRegistry $doctrine,
+        protected LoggerInterface $logger,
     ) {
         parent::__construct();
     }
@@ -48,9 +50,14 @@ class RefreshStatusesCommand extends Command
             try {
                 $this->sender->refreshStatus($invoice);
                 $rows[] = [$this->name($invoice), $before, $invoice->getPlatformStatus(), (string)$invoice->getPlatformReasons()];
-            } catch (HttpClientException $e) {
+            } catch (\Throwable $e) {
                 ++$errors;
                 $rows[] = [$this->name($invoice), $before, 'ERROR', $e->getMessage()];
+                $this->logger->error('Status of the invoice {invoice} not refreshed: {message}', [
+                    'invoice' => $this->name($invoice),
+                    'message' => $e->getMessage(),
+                    'exception' => $e,
+                ]);
             }
         }
 
@@ -88,7 +95,8 @@ class RefreshStatusesCommand extends Command
 
     /**
      * Entities of the project implementing ElectronicInvoiceInterface (ElectronicInvoiceTrait), found in the Doctrine
-     * mapping: no configuration needed. A child entity is left out when its parent is already queried.
+     * mapping: no configuration needed. Mapped superclasses and embeddables are left out (no table); a child entity is
+     * left out when a parent entity is already queried (the query on the parent returns it, even an abstract one).
      *
      * @return class-string<ElectronicInvoiceInterface>[]
      */
@@ -96,18 +104,27 @@ class RefreshStatusesCommand extends Command
     {
         $classes = [];
         foreach ($this->doctrine->getManagers() as $manager) {
+            $all = [];
             foreach ($manager->getMetadataFactory()->getAllMetadata() as $metadata) {
-                $class = $metadata->getName();
-                if (!is_subclass_of($class, ElectronicInvoiceInterface::class)) {
+                $all[$metadata->getName()] = $metadata;
+            }
+            foreach ($all as $class => $metadata) {
+                if (
+                    !$metadata instanceof ClassMetadata || $metadata->isMappedSuperclass || $metadata->isEmbeddedClass
+                    || !is_subclass_of($class, ElectronicInvoiceInterface::class)
+                ) {
                     continue;
                 }
-                $parents = array_filter(
-                    class_parents($class) ?: [],
-                    fn (string $parent): bool => is_subclass_of($parent, ElectronicInvoiceInterface::class)
-                );
-                if ($parents === [] && !(new \ReflectionClass($class))->isAbstract()) {
-                    $classes[] = $class;
+                foreach ($metadata->parentClasses as $parent) {
+                    $parentMetadata = $all[$parent] ?? null;
+                    if (
+                        $parentMetadata instanceof ClassMetadata && !$parentMetadata->isMappedSuperclass
+                        && is_subclass_of($parent, ElectronicInvoiceInterface::class)
+                    ) {
+                        continue 2;
+                    }
                 }
+                $classes[] = $class;
             }
         }
 

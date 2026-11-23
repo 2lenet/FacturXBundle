@@ -3,6 +3,7 @@
 namespace Lle\FacturXBundle\Tests\Invoice;
 
 use Doctrine\Persistence\ManagerRegistry;
+use Doctrine\Persistence\ObjectManager;
 use Lle\FacturXBundle\Invoice\ElectronicInvoiceInterface;
 use Lle\FacturXBundle\Invoice\ElectronicInvoiceTrait;
 use Lle\FacturXBundle\Invoice\InvoicePdfProviderInterface;
@@ -48,6 +49,29 @@ class InvoiceSenderTest extends TestCase
         $this->assertSame('SUBMITTED', $invoice->getPlatformStatus());
         $this->assertNull($invoice->getPlatformReasons());
         $this->assertNotNull($invoice->getPlatformSentAt());
+    }
+
+    public function testSendRefusesAnInvoiceAlreadySent(): void
+    {
+        $this->platform->expects($this->never())->method('send');
+        $this->expectException(\LogicException::class);
+
+        $this->sender->send(self::invoice()->setPlatformId('id-1')->setPlatformStatus('RECEIVED'));
+    }
+
+    public function testSendGivesThePlatformIdWhenTheInvoiceCannotBeSaved(): void
+    {
+        $this->platform->method('send')->willReturn('platform-id-1');
+        $manager = $this->createMock(ObjectManager::class);
+        $manager->method('flush')->willThrowException(new \Exception('database down'));
+        $doctrine = $this->createMock(ManagerRegistry::class);
+        $doctrine->method('getManagerForClass')->willReturn($manager);
+        $pdfProvider = $this->createMock(InvoicePdfProviderInterface::class);
+        $pdfProvider->method('getPdf')->willReturnCallback(fn (): string => (string)tempnam(sys_get_temp_dir(), 'invoice'));
+
+        $this->expectExceptionMessage('Invoice sent to the platform (id platform-id-1) but not saved: database down');
+
+        (new InvoiceSender($this->platform, $pdfProvider, $doctrine))->send(self::invoice());
     }
 
     public function testRefreshStatusKeepsTheMostRecent(): void

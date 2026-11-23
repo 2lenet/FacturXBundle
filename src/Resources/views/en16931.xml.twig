@@ -22,7 +22,7 @@
         <ram:ID>{{ invoice.number }}</ram:ID>
         <ram:TypeCode>{{ invoice.type_code|default('380') }}</ram:TypeCode>
         <ram:IssueDateTime>
-            <udt:DateTimeString format="102">{{ invoice.issue_date|date('Ymd') }}</udt:DateTimeString>
+            <udt:DateTimeString format="102">{{ invoice.issue_date|date('Ymd', false) }}</udt:DateTimeString>
         </ram:IssueDateTime>
 {% for note in invoice.notes|default([]) %}
         <ram:IncludedNote>
@@ -44,11 +44,11 @@
             </ram:SpecifiedTradeProduct>
             <ram:SpecifiedLineTradeAgreement>
                 <ram:NetPriceProductTradePrice>
-                    <ram:ChargeAmount>{{ fx.amount(line.unit_price_excl_tax) }}</ram:ChargeAmount>
+                    <ram:ChargeAmount>{{ fx.decimal(line.unit_price_excl_tax) }}</ram:ChargeAmount>
                 </ram:NetPriceProductTradePrice>
             </ram:SpecifiedLineTradeAgreement>
             <ram:SpecifiedLineTradeDelivery>
-                <ram:BilledQuantity unitCode="{{ line.unit_code|default('C62') }}">{{ line.quantity }}</ram:BilledQuantity>
+                <ram:BilledQuantity unitCode="{{ line.unit_code|default('C62') }}">{{ fx.decimal(line.quantity) }}</ram:BilledQuantity>
             </ram:SpecifiedLineTradeDelivery>
             <ram:SpecifiedLineTradeSettlement>
                 <ram:ApplicableTradeTax>
@@ -74,7 +74,7 @@
         <ram:ApplicableHeaderTradeDelivery>
             <ram:ActualDeliverySupplyChainEvent>
                 <ram:OccurrenceDateTime>
-                    <udt:DateTimeString format="102">{{ invoice.delivery_date|default(invoice.issue_date)|date('Ymd') }}</udt:DateTimeString>
+                    <udt:DateTimeString format="102">{{ invoice.delivery_date|default(invoice.issue_date)|date('Ymd', false) }}</udt:DateTimeString>
                 </ram:OccurrenceDateTime>
             </ram:ActualDeliverySupplyChainEvent>
         </ram:ApplicableHeaderTradeDelivery>
@@ -95,7 +95,7 @@
 {% if invoice.due_date|default %}
             <ram:SpecifiedTradePaymentTerms>
                 <ram:DueDateDateTime>
-                    <udt:DateTimeString format="102">{{ invoice.due_date|date('Ymd') }}</udt:DateTimeString>
+                    <udt:DateTimeString format="102">{{ invoice.due_date|date('Ymd', false) }}</udt:DateTimeString>
                 </ram:DueDateDateTime>
             </ram:SpecifiedTradePaymentTerms>
 {% endif %}
@@ -111,6 +111,9 @@
 </rsm:CrossIndustryInvoice>
 {#- macros (after the document: nothing may be written before the XML declaration) #}
 {% macro amount(value) %}{{ value|number_format(2, '.', '') }}{% endmacro %}
+
+{#- unit price and quantity: more precision allowed than for the amounts (0.125, not 0.13), no useless zero #}
+{% macro decimal(value) %}{{ value|number_format(4, '.', '')|trim('0', 'right')|trim('.', 'right') }}{% endmacro %}
 
 {% macro party(party) %}
                 <ram:Name>{{ party.name }}</ram:Name>

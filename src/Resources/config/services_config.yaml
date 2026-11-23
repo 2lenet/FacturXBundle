@@ -1,4 +1,4 @@
-# Loaded by LleFacturXExtension when lle_facturx.config_screen is true and 2lenet/config-bundle is installed.
+# Loaded by LleFacturXExtension when lle_facturx.config_screen is true (needs 2lenet/config-bundle).
 services:
     _defaults:
         autowire: true

@@ -11,9 +11,10 @@ use Lle\FacturXBundle\Invoice\InvoiceSender;
 use Lle\FacturXBundle\Platform\Iopole\IopolePlatform;
 use Lle\FacturXBundle\Platform\PlatformInterface;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 
-/** Platform chosen in the config, config screen only when asked and config-bundle is installed. */
+/** Platform chosen in the config, config screen only when asked (needs config-bundle). */
 class LleFacturXExtensionTest extends TestCase
 {
     private const CONFIG_BUNDLE = ['LleConfigBundle' => 'Lle\ConfigBundle\LleConfigBundle'];
@@ -52,11 +53,16 @@ class LleFacturXExtensionTest extends TestCase
 
     public function testConfigScreen(): void
     {
-        $this->assertFalse($this->container([], ['config_screen' => true])->hasDefinition(FacturXConfig::class));
-
         $container = $this->container(self::CONFIG_BUNDLE, ['config_screen' => true]);
         $this->assertTrue($container->hasDefinition(FacturXConfig::class));
         $this->assertTrue($container->hasDefinition(FacturXConfigWarmup::class));
+    }
+
+    public function testConfigScreenWithoutConfigBundle(): void
+    {
+        $this->expectException(InvalidConfigurationException::class);
+
+        $this->container([], ['config_screen' => true]);
     }
 
     /**

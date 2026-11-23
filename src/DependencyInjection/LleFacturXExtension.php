@@ -7,6 +7,7 @@ use Lle\FacturXBundle\Invoice\InvoicePdfProviderInterface;
 use Lle\FacturXBundle\Platform\Iopole\IopolePlatform;
 use Lle\FacturXBundle\Platform\PlatformInterface;
 use Lle\PdfGeneratorBundle\Converter\PdfToPdfArchiveConverter;
+use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
 use Symfony\Component\Config\FileLocator;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Extension\Extension;
@@ -36,18 +37,19 @@ class LleFacturXExtension extends Extension
             } else {
                 $container->removeDefinition(IopolePlatform::class);
             }
-            $container->setAlias(PlatformInterface::class, $platform)->setPublic(true);
+            $container->setAlias(PlatformInterface::class, $platform);
         }
-        $container->setParameter('lle_facturx.platform', $platform);
 
         // Factur-X PDF/A-3: only when pdf-generator-bundle is installed (optional dependency)
         if (class_exists(PdfToPdfArchiveConverter::class)) {
             $loader->load('services_pdf.yaml');
         }
 
-        // seller, billing framework and notes in the config screen: only when asked and config-bundle is installed
-        $configScreen = $config['config_screen'] && self::hasBundle($container, 'LleConfigBundle');
-        $container->setParameter('lle_facturx.config_screen', $configScreen);
+        // seller, billing framework and notes in the config screen: needs config-bundle
+        $configScreen = $config['config_screen'];
+        if ($configScreen && !self::hasBundle($container, 'LleConfigBundle')) {
+            throw new InvalidConfigurationException('lle_facturx.config_screen needs 2lenet/config-bundle (LleConfigBundle)');
+        }
         if ($configScreen) {
             $loader->load('services_config.yaml');
         }

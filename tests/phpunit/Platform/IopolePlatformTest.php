@@ -17,26 +17,33 @@ class IopolePlatformTest extends TestCase
     /** Extract of a real sandbox answer (invoice rejected on 2026-11-18). */
     private const HISTORY = [
         [
+            'statusId' => '01a1a0c2-0001-7000-8000-000000000002',
             'date' => '2026-11-18T12:52:58.000Z',
             'destType' => 'OPERATOR',
             'status' => ['code' => 'RECEIVED'],
             'json' => [],
         ],
         [
+            'statusId' => '01a1a0c2-0002-7000-8000-000000000003',
             'date' => '2026-11-18T12:52:58.938Z',
             'destType' => 'OPERATOR',
             'status' => ['code' => 'REJECTED'],
-            'json' => ['responses' => [[
-                'rejectionDetail' => [
-                    'message' => 'The document was rejected because it failed validation',
-                    'errors' => [[
-                        'rule' => 'BR-FR-08_BT-23',
-                        'message' => "\n        BR-FR-08/BT-23 : La valeur du mode de facturation est absente.\n      ",
-                    ]],
+            'json' => ['responses' => [
+                [
+                    'rejectionDetail' => [
+                        'message' => 'The document was rejected because it failed validation',
+                        'errors' => [[
+                            'rule' => 'BR-FR-08_BT-23',
+                            'message' => "\n        BR-FR-08/BT-23 : La valeur du mode de facturation est absente.\n      ",
+                        ]],
+                    ],
                 ],
-            ]]],
+                // an answer without detailed error: its message is kept
+                ['rejectionDetail' => ['message' => 'No route found for given key (electronicAddress : 0225:442876470)']],
+            ]],
         ],
         [
+            'statusId' => '01a1a0c2-0000-7000-8000-000000000001',
             'date' => '2026-11-18T12:52:57.000Z',
             'destType' => 'PPF',
             'status' => ['code' => 'NEW_CODE'],
@@ -89,6 +96,47 @@ class IopolePlatformTest extends TestCase
         $this->assertSame(['grant_type' => 'client_credentials', 'client_id' => 'client-test', 'client_secret' => 'secret-test'], $body);
     }
 
+    public function testOneTokenPerAccountInASharedCache(): void
+    {
+        $cache = new ArrayAdapter();
+        foreach (['client-a', 'client-b', 'client-a'] as $clientId) {
+            (new IopolePlatform($this->httpClient, $cache, self::AUTH_URL, self::API_URL, $clientId, 'secret', 'customer'))->getToken();
+        }
+
+        // client-a found again in the cache, client-b asks for its own token
+        $this->assertSame(2, $this->httpClient->getRequestsCount());
+    }
+
+    public function testSendWithoutIdInTheAnswer(): void
+    {
+        $file = (string)tempnam(sys_get_temp_dir(), 'invoice');
+        $platform = new IopolePlatform(
+            new MockHttpClient(fn (string $method, string $url): MockResponse => new MockResponse((string)json_encode(
+                $url === self::AUTH_URL ? ['access_token' => 'token-123', 'expires_in' => 300] : ['type' => 'INVOICE']
+            ))),
+            new ArrayAdapter(),
+            self::AUTH_URL,
+            self::API_URL,
+            'client-test',
+            'secret-test',
+            'customer-test',
+        );
+
+        $this->expectException(\UnexpectedValueException::class);
+        try {
+            $platform->send($file);
+        } finally {
+            unlink($file);
+        }
+    }
+
+    public function testStatusHistoryWithTheIdEncodedInTheUrl(): void
+    {
+        $this->platform->getStatusHistory('a/b c');
+
+        $this->assertSame(self::API_URL . '/v1/invoice/a%2Fb%20c/status-history', $this->requests[1]['url']);
+    }
+
     public function testSendTheFile(): void
     {
         $file = tempnam(sys_get_temp_dir(), 'invoice') . '.pdf';
@@ -111,7 +159,10 @@ class IopolePlatformTest extends TestCase
 
         $this->assertSame(self::API_URL . '/v1/invoice/iopole-id-1/status-history', $this->requests[1]['url']);
         $this->assertSame([StatusCode::REJECTED, StatusCode::RECEIVED, StatusCode::UNKNOWN], array_map(fn ($status) => $status->code, $history));
-        $this->assertSame(['BR-FR-08_BT-23 : BR-FR-08/BT-23 : La valeur du mode de facturation est absente.'], $history[0]->reasons);
+        $this->assertSame([
+            'BR-FR-08_BT-23 : BR-FR-08/BT-23 : La valeur du mode de facturation est absente.',
+            'No route found for given key (electronicAddress : 0225:442876470)',
+        ], $history[0]->reasons);
         $this->assertSame('OPERATOR', $history[0]->recipient);
         // unknown code: kept as given by the platform
         $this->assertSame('NEW_CODE', $history[2]->getLabel());

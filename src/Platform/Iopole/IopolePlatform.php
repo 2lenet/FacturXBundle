@@ -49,24 +49,22 @@ class IopolePlatform implements PlatformInterface
             'body' => $form->bodyToIterable(),
         ])->toArray();
 
-        return $data['id'];
+        return $data['id'] ?? throw new \UnexpectedValueException('No invoice id in the answer of the platform: ' . json_encode($data));
     }
 
     public function getStatusHistory(string $id): array
     {
         $statuses = $this->httpClient->request(
             'GET',
-            $this->apiUrl . self::ENDPOINT_INVOICE . '/' . $id . self::ENDPOINT_STATUS_HISTORY,
+            $this->apiUrl . self::ENDPOINT_INVOICE . '/' . rawurlencode($id) . self::ENDPOINT_STATUS_HISTORY,
             [
                 'auth_bearer' => $this->getToken(),
                 'headers' => [self::HEADER_CUSTOMER_ID . ': ' . $this->customerId],
             ]
         )->toArray();
 
-        // the statusId is a time-ordered UUID (v7), reliable; the date only when it is missing
-        usort($statuses, fn (array $a, array $b): int => isset($a['statusId'], $b['statusId'])
-            ? strcmp((string)$b['statusId'], (string)$a['statusId'])
-            : strcmp((string)$b['date'], (string)$a['date']));
+        // the statusId is a time-ordered UUID (v7): reliable, unlike the dates, some rounded to the second
+        usort($statuses, fn (array $a, array $b): int => strcmp((string)($b['statusId'] ?? ''), (string)($a['statusId'] ?? '')));
 
         return array_map(fn (array $status): Status => new Status(
             new \DateTimeImmutable($status['date']),
@@ -79,7 +77,10 @@ class IopolePlatform implements PlatformInterface
 
     public function getToken(): string
     {
-        return $this->cache->get(self::CACHE_KEY_TOKEN, function (ItemInterface $item): string {
+        // one token per account: a cache shared by several applications (Redis) never mixes them up
+        $key = self::CACHE_KEY_TOKEN . '_' . md5($this->authUrl . $this->clientId);
+
+        return $this->cache->get($key, function (ItemInterface $item): string {
             $data = $this->httpClient->request('POST', $this->authUrl, [
                 'body' => [
                     'grant_type' => self::GRANT_TYPE,
@@ -103,10 +104,12 @@ class IopolePlatform implements PlatformInterface
         $reasons = [];
         foreach ($response['responses'] ?? [] as $answer) {
             $rejection = $answer['rejectionDetail'] ?? [];
-            foreach ($rejection['errors'] ?? [] as $error) {
+            $errors = $rejection['errors'] ?? [];
+            foreach ($errors as $error) {
                 $reasons[] = $error['rule'] . ' : ' . trim((string)preg_replace('/\s+/', ' ', $error['message']));
             }
-            if ($reasons === [] && isset($rejection['message'])) {
+            // general message of this answer only when it has no detailed error
+            if ($errors === [] && isset($rejection['message'])) {
                 $reasons[] = $rejection['message'];
             }
         }

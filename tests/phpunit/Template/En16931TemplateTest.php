@@ -45,6 +45,33 @@ class En16931TemplateTest extends TestCase
         $this->assertStringContainsString('Dupont &amp; Fils &lt;SARL&gt;', $xml);
     }
 
+    public function testDatesKeepTheirDay(): void
+    {
+        $invoice = self::invoice();
+        $invoice['issue_date'] = new \DateTimeImmutable('2026-11-20 23:30', new \DateTimeZone('UTC'));
+        $defaultTimezone = date_default_timezone_get();
+        date_default_timezone_set('Europe/Paris');   // 21/11 00:30 in Paris: the day must not change
+        try {
+            $xml = $this->render($invoice);
+        } finally {
+            date_default_timezone_set($defaultTimezone);
+        }
+
+        $this->assertStringContainsString('<udt:DateTimeString format="102">20261120</udt:DateTimeString>', $xml);
+        $this->assertStringNotContainsString('20261121', $xml);
+    }
+
+    public function testUnitPriceAndQuantityKeepTheirPrecision(): void
+    {
+        $invoice = self::invoice();
+        $invoice['lines'][0]['unit_price_excl_tax'] = 0.125;
+        $invoice['lines'][0]['quantity'] = 0.1 + 0.2;   // 0.30000000000000004 in PHP
+        $xml = $this->render($invoice);
+
+        $this->assertStringContainsString('<ram:ChargeAmount>0.125</ram:ChargeAmount>', $xml);
+        $this->assertStringContainsString('<ram:BilledQuantity unitCode="C62">0.3</ram:BilledQuantity>', $xml);
+    }
+
     /** @return array<string, mixed> */
     public static function invoice(): array
     {

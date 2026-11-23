@@ -80,7 +80,7 @@ The platforms expect a PDF/A-3 with the XML attached under the name `factur-x.xm
 | Key | |
 |---|---|
 | `number` | Invoice number (BT-1) |
-| `type_code`? | `380` invoice (default), `381` credit note |
+| `type_code`? | `380` invoice (default), `381` credit note (without the reference to the invoice: see [Not covered yet](#not-covered-yet)) |
 | `issue_date` | `DateTimeInterface` or date string |
 | `due_date`? | Payment due date |
 | `delivery_date`? | Delivery date, the issue date by default |
@@ -90,7 +90,7 @@ The platforms expect a PDF/A-3 with the XML attached under the name `factur-x.xm
 | `buyer_reference`? | Buyer reference (BT-10) |
 | `notes[]`? | `content`, `subject_code`? (`PMT` recovery fee, `PMD` late penalties, `AAB` discount: required in France, BR-FR-05) |
 | `seller`, `buyer` | See below |
-| `lines[]` | `label`, `quantity`, `unit_price_excl_tax`, `vat_category`, `vat_rate`, `total_excl_tax`, `unit_code`? (`C62` by default) |
+| `lines[]` | `label`, `quantity`, `unit_price_excl_tax`, `vat_category`, `vat_rate`, `total_excl_tax`, `unit_code`? (`C62` by default). The unit price and the quantity keep up to 4 decimals, the amounts 2 |
 | `taxes[]` | One entry per VAT category and rate: `vat_category`, `vat_rate`, `basis_amount`, `tax_amount`, `exemption_reason`? (required for the category `E`) |
 | `totals` | `total_excl_tax`, `total_tax`, `total_incl_tax`, `tax_basis_total`? (`total_excl_tax` by default), `due_amount`? (`total_incl_tax` by default) |
 
@@ -106,6 +106,16 @@ The platforms expect a PDF/A-3 with the XML attached under the name `factur-x.xm
 | `address` | `line1`, `line2`?, `postcode`, `city`, `country_code`? (`FR` by default) |
 
 VAT categories: `S` standard rate, `Z` zero rate, `E` exempt, `AE` reverse charge, `K` intra-community, `G` export.
+
+### Not covered yet
+
+To add to the template when a project needs them:
+
+- the reference to the invoice corrected by a credit note `381` (BG-3, `InvoiceReferencedDocument`);
+- the payment terms as a text (BT-20). A due amount needs a `due_date` or payment terms (BR-CO-25): give a
+  `due_date`, otherwise the platform rejects the invoice;
+- the payment means and the IBAN (BG-16);
+- the allowances and charges of the whole document (BG-20, BG-21).
 
 ## Totals
 
@@ -133,18 +143,22 @@ empty), `seller_siren`, `seller_vat_number`, `seller_electronic_address`, `busin
 Needs a platform (`lle_facturx.platform`).
 
 1. Your invoice entity implements `ElectronicInvoiceInterface` with `ElectronicInvoiceTrait` (columns `platform_id`,
-   `platform_sent_at`, `platform_status`, `platform_reasons`: create the migration).
+   `platform_sent_at`, `platform_status`, `platform_reasons`: create the migration; with many invoices, add an index on
+   `platform_sent_at`, filtered by the cron).
 2. A service of yours implements `InvoicePdfProviderInterface` (`getPdf($invoice)`: path of a **temporary** Factur-X PDF,
    deleted once sent: never return a file you keep). When
    there is only one, it is used automatically; otherwise alias the interface.
 3. Send and refresh with `InvoiceSender`:
 
 ```php
-if (!$invoiceSender->isSent($invoice)) {      // sent and not rejected: cannot be sent again
-    $invoiceSender->send($invoice);            // id, date and status SUBMITTED kept on the invoice
-}
+$invoiceSender->isSent($invoice);              // sent and not rejected: cannot be sent again (to grey a button)
+$invoiceSender->send($invoice);                // id, date and status SUBMITTED kept on the invoice
 $invoiceSender->refreshStatus($invoice);       // most recent status and reasons of a rejection
 ```
+
+`send()` refuses an invoice already sent and not rejected (`LogicException`). When the invoice reaches the platform but
+cannot be saved, the `RuntimeException` gives its id on the platform.
+`send()` and `refreshStatus()` flush the entity manager of the invoice: other pending changes are saved too.
 
 4. Refresh the statuses with a cron. The command finds by itself the entities using `ElectronicInvoiceTrait`:
 
