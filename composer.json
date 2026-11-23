@@ -23,8 +23,11 @@
     },
     "suggest": {
         "2lenet/config-bundle": "Seller, billing framework and notes in the config screen (lle_facturx.config_screen)",
-        "2lenet/pdf-generator-bundle": "PDF/A-3 with the Factur-X XML attached (FacturXPdfConverter)",
+        "2lenet/pdf-generator-bundle": "PDF/A-3 with the Factur-X XML attached (FacturXPdfConverter), 5.0.1 or later",
         "symfony/translation": "Labels of the statuses (@LleFacturX/field/status.html.twig)"
+    },
+    "conflict": {
+        "2lenet/pdf-generator-bundle": "<5.0.1"
     },
     "autoload": {
         "psr-4": {
@@ -39,7 +42,7 @@
     "minimum-stability": "stable",
     "require-dev": {
         "2lenet/config-bundle": "^1.5",
-        "2lenet/pdf-generator-bundle": "^5.0",
+        "2lenet/pdf-generator-bundle": "^5.0.1",
         "ergebnis/phpstan-rules": "^2.1",
         "phpstan/phpstan": "^2.0",
         "phpstan/phpstan-phpunit": "^2.0",
