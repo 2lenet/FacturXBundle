@@ -168,6 +168,12 @@ cannot be saved, the `RuntimeException` gives its id on the platform.
 
 ## Platforms
 
+Each approved platform has its own API: authentication, endpoints and status codes differ (the AFNOR XP Z12-013
+standard for this API is not followed by all). What they share is the life cycle of the invoice, set by the reform.
+So the bundle talks to the platforms through one small interface, `PlatformInterface`: deposit an invoice, read its
+statuses. Iopole is the implementation provided (see [Iopole](#iopole)); another platform is plugged in with a service
+of the project (see [Another platform](#another-platform)).
+
 `PlatformInterface` is the platform chosen with `lle_facturx.platform`:
 
 ```php
@@ -185,6 +191,18 @@ To try a file by hand:
 ```bash
 bin/console lle:facturx:send invoice.pdf --wait=10
 ```
+
+### Iopole
+
+`Lle\FacturXBundle\Platform\Iopole\IopolePlatform`, enabled with `platform: iopole`:
+
+- authentication OAuth2 `client_credentials` on `FACTURX_PLATFORM_AUTH_URL`, the token kept in the cache until it
+  expires (`getToken()`);
+- `send()`: `POST /v1/invoice` (multipart, field `file`), header `customer-id` = `FACTURX_PLATFORM_ACCOUNT_ID`;
+- `getStatusHistory()`: `GET /v1/invoice/{id}/status-history`, the Iopole codes translated to `StatusCode`.
+
+To use more of the Iopole API, extend `IopolePlatform` in the project and give the id of your class in
+`lle_facturx.platform`.
 
 ### Statuses
 
@@ -235,3 +253,8 @@ offer things not covered yet, to add as optional interfaces when needed:
 lle_facturx:
     platform: App\EInvoicing\MyPlatform
 ```
+
+The service may have methods of its own (cancellation, received invoices...). The bundle only calls `send()` and
+`getStatusHistory()`; to call the others, inject your class rather than `PlatformInterface` (same service).
+When a feature is shared by several platforms, it belongs in the bundle as an optional interface (see
+[What the platforms offer](#what-the-platforms-offer-and-what-the-bundle-covers)).
