@@ -1,0 +1,8 @@
+{# Label of a platform status (StatusCode value, e.g. RECEIVED → Reçue). The code itself when unknown.
+   Crudit: Field::new('platformStatus')->setTemplate('@LleFacturX/field/status.html.twig')
+   Elsewhere: {% include '@LleFacturX/field/status.html.twig' with {value: invoice.platformStatus} only %} #}
+{% if value is not empty %}
+    {%- set key = 'facturx.status.' ~ value -%}
+    {%- set label = key|trans({}, 'LleFacturXBundle') -%}
+    {{- label != key ? label : value -}}
+{% endif %}

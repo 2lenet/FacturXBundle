@@ -1,0 +1,8 @@
+# Loaded by LleFacturXExtension when 2lenet/pdf-generator-bundle is installed.
+services:
+    _defaults:
+        autowire: true
+        autoconfigure: true
+        public: false
+
+    Lle\FacturXBundle\Pdf\FacturXPdfConverter: ~

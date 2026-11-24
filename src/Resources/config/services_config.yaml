@@ -1,0 +1,11 @@
+# Loaded by LleFacturXExtension when lle_facturx.config_screen is true (needs 2lenet/config-bundle).
+services:
+    _defaults:
+        autowire: true
+        autoconfigure: true
+        public: false
+
+    Lle\FacturXBundle\Config\FacturXConfig: ~
+
+    # tagged lle.config.warmup by the attribute of WarmupInterface (bin/console lle:config:warmup)
+    Lle\FacturXBundle\Config\FacturXConfigWarmup: ~
